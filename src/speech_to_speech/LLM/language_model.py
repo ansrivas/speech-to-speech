@@ -55,6 +55,7 @@ from speech_to_speech.LLM.utils import (
     sent_tokenize_preserving_markdown_code,
 )
 from speech_to_speech.LLM.voice_prompt import build_voice_system_prompt
+from speech_to_speech.memory.prompt import merge_instructions
 from speech_to_speech.pipeline.cancel_scope import CancelScope
 from speech_to_speech.pipeline.handler_types import LLMIn, LLMOut
 from speech_to_speech.pipeline.history import ResponseHistory
@@ -281,8 +282,9 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
         wants_audio: bool = True,
         *,
         language_name: str | None = None,
+        memory_context: str = "",
     ) -> None:
-        if not instructions and not language_name:
+        if not instructions and not language_name and not memory_context:
             return
 
         raw_tools = raw_tools or []
@@ -307,6 +309,7 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
             enter_code = None
             end_code = None
 
+        full_instructions = merge_instructions(full_instructions, memory_context)
         chat.prepend_instructions(full_instructions)
 
         if ctx is not None:
@@ -622,6 +625,7 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
             ctx,
             response_wants_audio(response),
             language_name=lang_name,
+            memory_context=runtime_config.memory_context_for_prompt() if runtime_config is not None else "",
         )
 
         # Images the model sees this turn; only these are stripped on write-back,

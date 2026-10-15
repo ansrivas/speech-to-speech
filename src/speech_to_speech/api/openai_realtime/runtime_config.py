@@ -1,3 +1,5 @@
+from typing import Any
+
 from openai.types.realtime import RealtimeSessionCreateRequest
 from openai.types.realtime.realtime_audio_config import RealtimeAudioConfig
 from openai.types.realtime.realtime_audio_config_input import RealtimeAudioConfigInput
@@ -43,6 +45,19 @@ class RuntimeConfig(BaseModel):
         validate_default=True,
     )
     last_assistant_language: str | None = Field(default=None, exclude=True)
+    # Bounded, pre-formatted long-term memory block injected into the system prompt.
+    memory_context: str = ""
+    # Optional process-wide memory runtime; when set, it supplies memory_context.
+    memory_runtime: Any = Field(default=None, exclude=True)
+
+    def memory_context_for_prompt(self) -> str:
+        """Fresh read-only memory block, or the static fallback. Never raises."""
+        if self.memory_runtime is not None:
+            try:
+                return self.memory_runtime.context()
+            except Exception:  # noqa: BLE001 - memory must never break a turn
+                return ""
+        return self.memory_context
 
     @field_validator("session", mode="after")
     @classmethod
