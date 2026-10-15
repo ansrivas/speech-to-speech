@@ -368,6 +368,7 @@ class RealtimeService:
         speculative_turns: SpeculativeTurnTracker | None = None,
         turn_latency_store: TurnLatencyStore | None = None,
         default_instructions: str | None = None,
+        memory_runtime: Any | None = None,
     ) -> None:
         self.text_prompt_queue = text_prompt_queue
         self.should_listen = should_listen
@@ -377,6 +378,7 @@ class RealtimeService:
         if speculative_turns is not None:
             speculative_turns.wait_observer = self.turn_latency_store.record_smart_wait
         self._default_instructions = default_instructions
+        self._memory_runtime = memory_runtime
         # None means the active backend does not declare a complete language set.
         self.stt_supported_languages: set[str] | None = None
         self.tts_supported_languages: set[str] | None = None
@@ -415,6 +417,7 @@ class RealtimeService:
                     type="realtime",
                     instructions=self._default_instructions,
                 ),
+                memory_runtime=self._memory_runtime,
             )
         )
         self._conns[state.session_id] = state

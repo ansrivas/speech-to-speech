@@ -1301,6 +1301,13 @@ class ResponseHandler(RealtimeBaseHandler):
         if not self._accept_turn_output(conn_id, event):
             return []
         st = self._state(conn_id)
+        if event.status == "completed":
+            memory_runtime = getattr(st.runtime_config, "memory_runtime", None)
+            if memory_runtime is not None:
+                try:
+                    memory_runtime.record_latest_turn(st.runtime_config.chat)
+                except Exception:  # noqa: BLE001 - memory must never break a turn
+                    logger.warning("Memory turn record failed", exc_info=True)
         response_was_missing = st.current_response_id is None
         self._ensure_response(conn_id, event.response_key)
         if (
