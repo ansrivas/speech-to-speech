@@ -11,8 +11,9 @@ import importlib
 import logging
 import os
 from pathlib import Path
-from typing import Callable, Mapping
+from typing import Any, Callable, Mapping
 
+from speech_to_speech.memory.chat_completions import create_chat_completions_generate_fn
 from speech_to_speech.memory.extractor import GenerateFn, MemoryExtractor
 from speech_to_speech.memory.service import MemoryRuntime
 from speech_to_speech.memory.store import MemoryStore
@@ -52,8 +53,13 @@ def load_generate_fn(module_name: str) -> GenerateFn | None:
     return generate
 
 
-def build_memory_runtime(env: Mapping[str, str] | None = None) -> MemoryRuntime | None:
-    """Build a runtime from env, or ``None`` when memory is disabled."""
+def build_memory_runtime(
+    env: Mapping[str, str] | None = None,
+    *,
+    llm_backend: str | None = None,
+    llm_config: Mapping[str, Any] | None = None,
+) -> MemoryRuntime | None:
+    """Build a runtime from env and active LLM config, or ``None`` when disabled."""
     env = os.environ if env is None else env
     db_path = env.get("PICARX_MEMORY_DB", "").strip()
     if not db_path:
@@ -72,9 +78,23 @@ def build_memory_runtime(env: Mapping[str, str] | None = None) -> MemoryRuntime 
     )
     if not store.initialize():
         return None
-    generate_fn: Callable[[str, str], str] | None = load_generate_fn(
-        env.get("PICARX_MEMORY_EXTRACT_MODULE", "").strip()
-    )
+    module_name = env.get("PICARX_MEMORY_EXTRACT_MODULE", "").strip()
+    generate_fn: Callable[[str, str], str] | None = load_generate_fn(module_name)
+    if not module_name and llm_backend == "chat-completions" and llm_config is not None:
+        base_url = llm_config.get("base_url")
+        model_name = llm_config.get("model_name")
+        if isinstance(base_url, str) and base_url.strip() and isinstance(model_name, str) and model_name.strip():
+            api_key = llm_config.get("api_key")
+            try:
+                generate_fn = create_chat_completions_generate_fn(
+                    base_url.strip(),
+                    api_key if isinstance(api_key, str) else None,
+                    model_name.strip(),
+                )
+            except Exception:  # noqa: BLE001 - memory must not break server startup
+                logger.warning("Memory extractor could not initialize; continuing recall-only", exc_info=True)
+        else:
+            logger.warning("Memory extraction unavailable: chat-completions backend lacks base_url or model_name")
     extractor: MemoryExtractor | None = None
     if generate_fn is not None:
         extractor = MemoryExtractor(
@@ -99,11 +119,15 @@ def build_memory_runtime(env: Mapping[str, str] | None = None) -> MemoryRuntime 
     return runtime
 
 
-def get_shared_memory_runtime() -> MemoryRuntime | None:
-    """Return the process-wide runtime, building it once. Idempotent."""
+def get_shared_memory_runtime(
+    *,
+    llm_backend: str | None = None,
+    llm_config: Mapping[str, Any] | None = None,
+) -> MemoryRuntime | None:
+    """Return process-wide memory, configured with active LLM settings once."""
     global _shared
     if _shared is None:
-        _shared = build_memory_runtime()
+        _shared = build_memory_runtime(llm_backend=llm_backend, llm_config=llm_config)
         if _shared is not None:
             atexit.register(_shared.close)
     return _shared

@@ -634,7 +634,10 @@ def _build_pipeline_unit(
         speculative_turns=speculative_turns,
         turn_latency_store=turn_latency_store,
         default_instructions=default_instructions,
-        memory_runtime=get_shared_memory_runtime(),
+        memory_runtime=get_shared_memory_runtime(
+            llm_backend=llm_selection.name,
+            llm_config=llm_selection.config,
+        ),
     )
 
     if module_kwargs.enable_live_transcription and not stt_selection.spec.capabilities.streams_audio_chunks:
