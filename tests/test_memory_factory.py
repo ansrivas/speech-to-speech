@@ -31,6 +31,45 @@ def test_builds_recall_only_runtime(tmp_path):
     runtime.close()
 
 
+def test_uses_chat_completions_backend_by_default(tmp_path, monkeypatch):
+    from speech_to_speech.memory import factory
+
+    calls = []
+
+    def generate(system: str, user: str) -> str:
+        calls.append((system, user))
+        return '{"facts": [{"text": "Aria likes pancakes.", "category": "preference", "confidence": 0.9}]}'
+
+    def build_generate(base_url, api_key, model_name):
+        assert base_url == "http://127.0.0.1:8080/v1"
+        assert api_key == ""
+        assert model_name == "google/gemma-4-12B-it-QAT-Q4_0.gguf"
+        return generate
+
+    monkeypatch.setattr(factory, "create_chat_completions_generate_fn", build_generate)
+    runtime = build_memory_runtime(
+        {"PICARX_MEMORY_DB": str(tmp_path / "memory.db")},
+        llm_backend="chat-completions",
+        llm_config={
+            "base_url": "http://127.0.0.1:8080/v1",
+            "api_key": "",
+            "model_name": "google/gemma-4-12B-it-QAT-Q4_0.gguf",
+        },
+    )
+    assert runtime is not None
+    try:
+        assert runtime.record_turn("I like pancakes.", "I'll remember that.") is True
+        import time
+
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and not runtime.context():
+            time.sleep(0.01)
+        assert "Aria likes pancakes." in runtime.context()
+        assert calls
+    finally:
+        runtime.close()
+
+
 def test_bad_numeric_env_falls_back(tmp_path):
     runtime = build_memory_runtime(
         {
