@@ -40,10 +40,12 @@ def test_uses_chat_completions_backend_by_default(tmp_path, monkeypatch):
         calls.append((system, user))
         return '{"facts": [{"text": "Aria likes pancakes.", "category": "preference", "confidence": 0.9}]}'
 
-    def build_generate(base_url, api_key, model_name):
+    def build_generate(base_url, api_key, model_name, *, disable_thinking, reasoning_effort):
         assert base_url == "http://127.0.0.1:8080/v1"
         assert api_key == ""
         assert model_name == "google/gemma-4-12B-it-QAT-Q4_0.gguf"
+        assert disable_thinking is False
+        assert reasoning_effort == "low"
         return generate
 
     monkeypatch.setattr(factory, "create_chat_completions_generate_fn", build_generate)
@@ -54,6 +56,8 @@ def test_uses_chat_completions_backend_by_default(tmp_path, monkeypatch):
             "base_url": "http://127.0.0.1:8080/v1",
             "api_key": "",
             "model_name": "google/gemma-4-12B-it-QAT-Q4_0.gguf",
+            "disable_thinking": False,
+            "reasoning_effort": "low",
         },
     )
     assert runtime is not None

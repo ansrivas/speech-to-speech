@@ -5,6 +5,8 @@ from __future__ import annotations
 import sys
 from types import ModuleType, SimpleNamespace
 
+import pytest
+
 from speech_to_speech.memory.chat_completions import create_chat_completions_generate_fn
 
 
@@ -40,10 +42,56 @@ def test_generate_calls_configured_chat_completions_model():
                 {"role": "user", "content": "user turn"},
             ],
             "temperature": 0,
-            "max_tokens": 128,
+            "max_tokens": 512,
             "stream": False,
+            "response_format": {"type": "json_object"},
+            "extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
         }
     ]
+
+
+@pytest.mark.parametrize(
+    ("base_url", "disable_thinking", "reasoning_effort", "expected"),
+    [
+        ("http://127.0.0.1:8080/v1", False, None, None),
+        ("http://127.0.0.1:8080/v1", True, "none", {"reasoning_effort": "none"}),
+        ("http://127.0.0.1:8080/v1", False, "low", {"reasoning_effort": "low"}),
+        ("https://api.openai.com/v1", True, None, None),
+        ("https://api.openai.com/v1/", True, None, None),
+        ("https://api.openai.com/v1", True, "low", {"reasoning_effort": "low"}),
+    ],
+)
+def test_generate_respects_configured_reasoning_and_official_provider(
+    base_url, disable_thinking, reasoning_effort, expected
+):
+    response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='{"facts": []}'))])
+    completions = _Completions(response)
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+    generate = create_chat_completions_generate_fn(
+        base_url,
+        "test-key",
+        "model",
+        client=client,
+        disable_thinking=disable_thinking,
+        reasoning_effort=reasoning_effort,
+    )
+
+    assert generate("Return JSON", "turn") == '{"facts": []}'
+    assert completions.calls[0]["extra_body"] == expected
+
+
+def test_generate_rejects_truncated_response_without_logging_private_content(caplog):
+    content = '{"facts": [{"text": "private preference"}]}'
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(finish_reason="length", message=SimpleNamespace(content=content))]
+    )
+    client = SimpleNamespace(chat=SimpleNamespace(completions=_Completions(response)))
+    generate = create_chat_completions_generate_fn("http://127.0.0.1:8080/v1", "", "model", client=client)
+
+    assert generate("Return JSON", "private transcript") == ""
+    assert "token limit" in caplog.text
+    assert "private preference" not in caplog.text
+    assert "private transcript" not in caplog.text
 
 
 def test_generate_returns_empty_string_for_non_text_content():

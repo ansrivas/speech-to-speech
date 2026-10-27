@@ -90,6 +90,8 @@ def build_memory_runtime(
                     base_url.strip(),
                     api_key if isinstance(api_key, str) else None,
                     model_name.strip(),
+                    disable_thinking=llm_config.get("disable_thinking", True),
+                    reasoning_effort=llm_config.get("reasoning_effort"),
                 )
             except Exception:  # noqa: BLE001 - memory must not break server startup
                 logger.warning("Memory extractor could not initialize; continuing recall-only", exc_info=True)
